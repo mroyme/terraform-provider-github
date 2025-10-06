@@ -93,13 +93,7 @@ func resourceGithubOrganizationCustomPropertyCreate(d *schema.ResourceData, meta
 
 	// Set default value if provided
 	if v, ok := d.GetOk("default_value"); ok {
-		switch valueType {
-		case SINGLE_SELECT, STRING, TRUE_FALSE:
-			property.DefaultValue = github.Ptr(v.(string))
-		case MULTI_SELECT:
-			// For multi_select, default_value should be a single value
-			property.DefaultValue = github.Ptr(v.(string))
-		}
+		property.DefaultValue = github.Ptr(v.(string))
 	}
 
 	// Set allowed values if provided (only for select types)
@@ -188,12 +182,7 @@ func resourceGithubOrganizationCustomPropertyUpdate(d *schema.ResourceData, meta
 
 	// Set default value if provided
 	if v, ok := d.GetOk("default_value"); ok {
-		switch valueType {
-		case SINGLE_SELECT, STRING, TRUE_FALSE:
-			property.DefaultValue = github.Ptr(v.(string))
-		case MULTI_SELECT:
-			property.DefaultValue = github.Ptr(v.(string))
-		}
+		property.DefaultValue = github.Ptr(v.(string))
 	}
 
 	// Set allowed values if provided
