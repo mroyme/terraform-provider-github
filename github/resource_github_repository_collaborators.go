@@ -425,7 +425,7 @@ func matchTeamCollaborators(repoName string, want []any, has []teamCollaborator,
 			remove = append(remove, hasTeam)
 		} else if wantPerm != hasTeam.permission { // permission should be updated
 			log.Printf("[DEBUG] Updating team %d permission from %s to %s for repo: %s.", hasTeam.teamID, hasTeam.permission, wantPerm, repoName)
-			_, err := client.Teams.AddTeamRepoByID(
+			_, err := client.Teams.AddTeamRepoByID( //nolint:staticcheck
 				ctx, orgID, hasTeam.teamID, owner, repoName, &github.TeamAddTeamRepoOptions{
 					Permission: wantPerm,
 				},
@@ -456,7 +456,7 @@ func matchTeamCollaborators(repoName string, want []any, has []teamCollaborator,
 		permission := teamData["permission"].(string)
 		// team needs to be added
 		log.Printf("[DEBUG] Adding team %s with permission %s for repo: %s.", teamIDString, permission, repoName)
-		_, err = client.Teams.AddTeamRepoByID(
+		_, err = client.Teams.AddTeamRepoByID( //nolint:staticcheck
 			ctx, orgID, teamID, owner, repoName, &github.TeamAddTeamRepoOptions{
 				Permission: permission,
 			},
@@ -468,7 +468,7 @@ func matchTeamCollaborators(repoName string, want []any, has []teamCollaborator,
 
 	for _, team := range remove {
 		log.Printf("[DEBUG] Removing team %d from repo: %s.", team.teamID, repoName)
-		_, err := client.Teams.RemoveTeamRepoByID(ctx, orgID, team.teamID, owner, repoName)
+		_, err := client.Teams.RemoveTeamRepoByID(ctx, orgID, team.teamID, owner, repoName) //nolint:staticcheck
 		if err != nil {
 			return err
 		}

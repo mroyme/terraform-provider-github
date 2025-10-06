@@ -151,7 +151,7 @@ func resourceGithubOrganizationSecurityManagerUpdate(d *schema.ResourceData, met
 	client := meta.(*Owner).v3client
 	ctx := context.WithValue(context.Background(), ctxId, d.Id())
 
-	team, _, err := client.Teams.GetTeamByID(ctx, orgId, teamId)
+	team, _, err := client.Teams.GetTeamByID(ctx, orgId, teamId) //nolint:staticcheck
 	if err != nil {
 		return err
 	}
