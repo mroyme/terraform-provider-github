@@ -241,7 +241,7 @@ func resolveTeamIDs(idOrSlug string, meta *Owner, ctx context.Context) (nodeId s
 		return team.GetNodeID(), team.GetSlug(), nil
 	} else {
 		// The given id is an integer, assume it is a team id
-		team, _, teamIdErr := client.Teams.GetTeamByID(ctx, orgId, teamId)
+		team, _, teamIdErr := client.Teams.GetTeamByID(ctx, orgId, teamId) //nolint:staticcheck
 		if teamIdErr != nil {
 			// There isn't a team with the given ID, assume it is a teamslug
 			team, _, slugErr := client.Teams.GetTeamBySlug(ctx, orgName, idOrSlug)

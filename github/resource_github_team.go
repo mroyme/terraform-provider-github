@@ -154,7 +154,7 @@ func resourceGithubTeamCreate(d *schema.ResourceData, meta any) error {
 		on the parent team, the operation might still fail to set the parent team.
 	*/
 	if newTeam.ParentTeamID != nil && githubTeam.Parent == nil {
-		_, _, err := client.Teams.EditTeamByID(ctx,
+		_, _, err := client.Teams.EditTeamByID(ctx, //nolint:staticcheck
 			*githubTeam.Organization.ID,
 			*githubTeam.ID,
 			newTeam,
@@ -195,7 +195,7 @@ func resourceGithubTeamRead(d *schema.ResourceData, meta any) error {
 		ctx = context.WithValue(ctx, ctxEtag, d.Get("etag").(string))
 	}
 
-	team, resp, err := client.Teams.GetTeamByID(ctx, orgId, id)
+	team, resp, err := client.Teams.GetTeamByID(ctx, orgId, id) //nolint:staticcheck
 	if err != nil {
 		if ghErr, ok := err.(*github.ErrorResponse); ok {
 			if ghErr.Response.StatusCode == http.StatusNotModified {
@@ -292,7 +292,7 @@ func resourceGithubTeamUpdate(d *schema.ResourceData, meta any) error {
 	}
 	ctx := context.WithValue(context.Background(), ctxId, d.Id())
 
-	team, _, err := client.Teams.EditTeamByID(ctx, orgId, teamId, editedTeam, removeParentTeam)
+	team, _, err := client.Teams.EditTeamByID(ctx, orgId, teamId, editedTeam, removeParentTeam) //nolint:staticcheck
 	if err != nil {
 		return err
 	}
@@ -327,7 +327,7 @@ func resourceGithubTeamDelete(d *schema.ResourceData, meta any) error {
 	}
 	ctx := context.WithValue(context.Background(), ctxId, d.Id())
 
-	_, err = client.Teams.DeleteTeamByID(ctx, orgId, id)
+	_, err = client.Teams.DeleteTeamByID(ctx, orgId, id) //nolint:staticcheck
 	/*
 		When deleting a team and it failed, we need to check if it has already been deleted meanwhile.
 		This could be the case when deleting nested teams via Terraform by looping through a module
@@ -338,7 +338,7 @@ func resourceGithubTeamDelete(d *schema.ResourceData, meta any) error {
 	*/
 	if err != nil {
 		// Fetch the team in order to see if it exists or not (http 404)
-		_, _, err = client.Teams.GetTeamByID(ctx, orgId, id)
+		_, _, err = client.Teams.GetTeamByID(ctx, orgId, id) //nolint:staticcheck
 		if err != nil {
 			if ghErr, ok := err.(*github.ErrorResponse); ok {
 				if ghErr.Response.StatusCode == http.StatusNotFound {

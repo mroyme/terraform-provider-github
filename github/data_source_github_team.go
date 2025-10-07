@@ -172,7 +172,7 @@ func dataSourceGithubTeamRead(d *schema.ResourceData, meta any) error {
 		repositories_detailed = make([]any, 0, resultsPerPage) //removed this from the loop
 
 		for {
-			repository, resp, err := client.Teams.ListTeamReposByID(ctx, orgId, team.GetID(), &options.ListOptions)
+			repository, resp, err := client.Teams.ListTeamReposByID(ctx, orgId, team.GetID(), &options.ListOptions) //nolint:staticcheck
 			if err != nil {
 				return err
 			}

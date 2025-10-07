@@ -82,7 +82,7 @@ func resourceGithubTeamRepositoryCreate(d *schema.ResourceData, meta any) error 
 	permission := d.Get("permission").(string)
 	ctx := context.Background()
 
-	_, err = client.Teams.AddTeamRepoByID(ctx,
+	_, err = client.Teams.AddTeamRepoByID(ctx, //nolint:staticcheck
 		orgId,
 		teamId,
 		orgName,
@@ -124,7 +124,7 @@ func resourceGithubTeamRepositoryRead(d *schema.ResourceData, meta any) error {
 		ctx = context.WithValue(ctx, ctxEtag, d.Get("etag").(string))
 	}
 
-	repo, resp, repoErr := client.Teams.IsTeamRepoByID(ctx, orgId, teamId, orgName, repoName)
+	repo, resp, repoErr := client.Teams.IsTeamRepoByID(ctx, orgId, teamId, orgName, repoName) //nolint:staticcheck
 	if repoErr != nil {
 		if ghErr, ok := repoErr.(*github.ErrorResponse); ok {
 			if ghErr.Response.StatusCode == http.StatusNotModified {
@@ -182,7 +182,7 @@ func resourceGithubTeamRepositoryUpdate(d *schema.ResourceData, meta any) error 
 	ctx := context.WithValue(context.Background(), ctxId, d.Id())
 
 	// the go-github library's AddTeamRepo method uses the add/update endpoint from GitHub API
-	_, err = client.Teams.AddTeamRepoByID(ctx,
+	_, err = client.Teams.AddTeamRepoByID(ctx, //nolint:staticcheck
 		orgId,
 		teamId,
 		orgName,
@@ -190,7 +190,7 @@ func resourceGithubTeamRepositoryUpdate(d *schema.ResourceData, meta any) error 
 		&github.TeamAddTeamRepoOptions{
 			Permission: permission,
 		},
-	)
+	) //nolint:staticcheck
 
 	if err != nil {
 		return err
@@ -220,7 +220,7 @@ func resourceGithubTeamRepositoryDelete(d *schema.ResourceData, meta any) error 
 	orgName := meta.(*Owner).name
 	ctx := context.WithValue(context.Background(), ctxId, d.Id())
 
-	resp, err := client.Teams.RemoveTeamRepoByID(ctx, orgId, teamId, orgName, repoName)
+	resp, err := client.Teams.RemoveTeamRepoByID(ctx, orgId, teamId, orgName, repoName) //nolint:staticcheck
 
 	if resp.StatusCode == 404 {
 		log.Printf("[DEBUG] Failed to find team %s to delete for repo: %s.", teamIdString, repoName)
@@ -233,7 +233,7 @@ func resourceGithubTeamRepositoryDelete(d *schema.ResourceData, meta any) error 
 			log.Printf("[INFO] Repo name has changed %s -> %s. "+
 				"Try deleting team repository again.",
 				repoName, newRepoName)
-			_, err := client.Teams.RemoveTeamRepoByID(ctx, orgId, teamId, orgName, newRepoName)
+			_, err := client.Teams.RemoveTeamRepoByID(ctx, orgId, teamId, orgName, newRepoName) //nolint:staticcheck
 			return err
 		}
 	}
