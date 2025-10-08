@@ -98,7 +98,7 @@ func resourceGithubOrganizationCustomPropertyCreate(d *schema.ResourceData, meta
 
 	// Set allowed values if provided (only for select types)
 	if v, ok := d.GetOk("allowed_values"); ok {
-		allowedValues := expandStringList(v.([]interface{}))
+		allowedValues := expandStringList(v.([]any))
 		if valueType == SINGLE_SELECT || valueType == MULTI_SELECT {
 			property.AllowedValues = allowedValues
 		} else {
@@ -187,7 +187,7 @@ func resourceGithubOrganizationCustomPropertyUpdate(d *schema.ResourceData, meta
 
 	// Set allowed values if provided
 	if v, ok := d.GetOk("allowed_values"); ok {
-		allowedValues := expandStringList(v.([]interface{}))
+		allowedValues := expandStringList(v.([]any))
 		if valueType == SINGLE_SELECT || valueType == MULTI_SELECT {
 			property.AllowedValues = allowedValues
 		}
