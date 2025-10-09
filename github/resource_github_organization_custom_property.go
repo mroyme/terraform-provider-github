@@ -10,6 +10,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
+const (
+	SINGLE_SELECT = "single_select"
+	MULTI_SELECT  = "multi_select"
+	STRING        = "string"
+	TRUE_FALSE    = "true_false"
+)
+
 func resourceGithubOrganizationCustomProperty() *schema.Resource {
 	return &schema.Resource{
 		Description: "Creates and manages a custom property for a GitHub Organization.",
