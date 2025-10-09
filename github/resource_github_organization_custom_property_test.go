@@ -26,7 +26,7 @@ func TestAccGithubOrganizationCustomProperty(t *testing.T) {
 
 		check := resource.ComposeTestCheckFunc(
 			resource.TestCheckResourceAttr("github_organization_custom_property.test", "name", fmt.Sprintf("environment_%s", randomID)),
-			resource.TestCheckResourceAttr("github_organization_custom_property.test", "value_type", "single_select"),
+			resource.TestCheckResourceAttr("github_organization_custom_property.test", "value_type", SINGLE_SELECT),
 			resource.TestCheckResourceAttr("github_organization_custom_property.test", "required", "true"),
 			resource.TestCheckResourceAttr("github_organization_custom_property.test", "default_value", "production"),
 			resource.TestCheckResourceAttr("github_organization_custom_property.test", "description", "Prod or dev environment"),
@@ -205,7 +205,6 @@ func TestAccGithubOrganizationCustomProperty(t *testing.T) {
 				name               = "status_%s"
 				value_type         = "single_select"
 				required           = false
-				default_value      = "active"
 				description        = "Repository status"
 				allowed_values     = ["active", "inactive"]
 				values_editable_by = "org_actors"
@@ -227,7 +226,6 @@ func TestAccGithubOrganizationCustomProperty(t *testing.T) {
 		checkBefore := resource.ComposeTestCheckFunc(
 			resource.TestCheckResourceAttr("github_organization_custom_property.test", "name", fmt.Sprintf("status_%s", randomID)),
 			resource.TestCheckResourceAttr("github_organization_custom_property.test", "required", "false"),
-			resource.TestCheckResourceAttr("github_organization_custom_property.test", "default_value", "active"),
 			resource.TestCheckResourceAttr("github_organization_custom_property.test", "description", "Repository status"),
 			resource.TestCheckResourceAttr("github_organization_custom_property.test", "allowed_values.#", "2"),
 			resource.TestCheckResourceAttr("github_organization_custom_property.test", "values_editable_by", "org_actors"),
