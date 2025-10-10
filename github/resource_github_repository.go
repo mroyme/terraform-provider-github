@@ -765,7 +765,6 @@ func resourceGithubRepositoryRead(d *schema.ResourceData, meta any) error {
 		return err
 	}
 
-	// Read custom properties
 	customProps, err := getRepositoryCustomProperties(ctx, client, owner, repoName)
 	if err != nil {
 		return fmt.Errorf("error reading repository custom properties: %v", err)
@@ -1112,8 +1111,6 @@ func customDiffFunction(_ context.Context, diff *schema.ResourceDiff, v any) err
 	return nil
 }
 
-// getRepositoryCustomProperties retrieves all custom properties for a repository
-// and returns them as a set suitable for Terraform state
 func getRepositoryCustomProperties(ctx context.Context, client *github.Client, owner, repoName string) (*schema.Set, error) {
 	allCustomProperties, _, err := client.Repositories.GetAllCustomPropertyValues(ctx, owner, repoName)
 	if err != nil {
@@ -1160,7 +1157,6 @@ func getRepositoryCustomProperties(ctx context.Context, client *github.Client, o
 	}), results), nil
 }
 
-// setRepositoryCustomProperties sets custom properties for a repository
 func setRepositoryCustomProperties(ctx context.Context, client *github.Client, owner, repoName string, customPropsSet *schema.Set) error {
 	if customPropsSet == nil || customPropsSet.Len() == 0 {
 		return nil
