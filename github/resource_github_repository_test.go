@@ -1565,6 +1565,120 @@ func TestAccGithubRepositoryVisibility(t *testing.T) {
 		})
 	})
 
+	t.Run("sets custom properties on repository create", func(t *testing.T) {
+		t.Skip("Requires org with custom properties configured")
+
+		config := fmt.Sprintf(`
+			resource "github_repository" "test" {
+				name        = "tf-acc-test-%s"
+				description = "Test repository for custom properties"
+				
+				custom_properties = {
+					string_prop = "test_value"
+					boolean_prop = "true"
+					single_select_prop = "option1"
+					multi_select_prop = jsonencode(["option1", "option2"])
+				}
+			}
+		`, randomID)
+
+		check := resource.ComposeTestCheckFunc(
+			resource.TestCheckResourceAttr("github_repository.test", "custom_properties.string_prop", "test_value"),
+			resource.TestCheckResourceAttr("github_repository.test", "custom_properties.boolean_prop", "true"),
+			resource.TestCheckResourceAttr("github_repository.test", "custom_properties.single_select_prop", "option1"),
+		)
+
+		testCase := func(t *testing.T, mode string) {
+			resource.Test(t, resource.TestCase{
+				PreCheck:  func() { skipUnlessMode(t, mode) },
+				Providers: testAccProviders,
+				Steps: []resource.TestStep{
+					{
+						Config: config,
+						Check:  check,
+					},
+				},
+			})
+		}
+
+		t.Run("with an anonymous account", func(t *testing.T) {
+			t.Skip("anonymous account not supported for this operation")
+		})
+
+		t.Run("with an individual account", func(t *testing.T) {
+			testCase(t, individual)
+		})
+
+		t.Run("with an organization account", func(t *testing.T) {
+			testCase(t, organization)
+		})
+	})
+
+	t.Run("updates custom properties", func(t *testing.T) {
+		t.Skip("Requires org with custom properties configured")
+
+		config := fmt.Sprintf(`
+			resource "github_repository" "test" {
+				name        = "tf-acc-test-%s"
+				description = "Test repository for custom properties"
+				
+				custom_properties = {
+					string_prop = "test_value"
+				}
+			}
+		`, randomID)
+
+		configUpdated := fmt.Sprintf(`
+			resource "github_repository" "test" {
+				name        = "tf-acc-test-%s"
+				description = "Test repository for custom properties"
+				
+				custom_properties = {
+					string_prop = "updated_value"
+					new_prop = "new_value"
+				}
+			}
+		`, randomID)
+
+		check := resource.ComposeTestCheckFunc(
+			resource.TestCheckResourceAttr("github_repository.test", "custom_properties.string_prop", "test_value"),
+		)
+
+		checkUpdated := resource.ComposeTestCheckFunc(
+			resource.TestCheckResourceAttr("github_repository.test", "custom_properties.string_prop", "updated_value"),
+			resource.TestCheckResourceAttr("github_repository.test", "custom_properties.new_prop", "new_value"),
+		)
+
+		testCase := func(t *testing.T, mode string) {
+			resource.Test(t, resource.TestCase{
+				PreCheck:  func() { skipUnlessMode(t, mode) },
+				Providers: testAccProviders,
+				Steps: []resource.TestStep{
+					{
+						Config: config,
+						Check:  check,
+					},
+					{
+						Config: configUpdated,
+						Check:  checkUpdated,
+					},
+				},
+			})
+		}
+
+		t.Run("with an anonymous account", func(t *testing.T) {
+			t.Skip("anonymous account not supported for this operation")
+		})
+
+		t.Run("with an individual account", func(t *testing.T) {
+			testCase(t, individual)
+		})
+
+		t.Run("with an organization account", func(t *testing.T) {
+			testCase(t, organization)
+		})
+	})
+
 }
 
 func TestGithubRepositoryTopicPassesValidation(t *testing.T) {

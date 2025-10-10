@@ -407,6 +407,28 @@ func resourceGithubRepository() *schema.Resource {
 				Optional:    true,
 				Description: " Set to 'true' to always suggest updating pull request branches.",
 			},
+			"custom_property": {
+				Type:        schema.TypeSet,
+				Optional:    true,
+				Description: "Custom properties for the repository.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"property_name": {
+							Type:        schema.TypeString,
+							Required:    true,
+							Description: "The name of the custom property.",
+						},
+						"value": {
+							Type:        schema.TypeList,
+							Required:    true,
+							Description: "The value(s) of the custom property. For single-value properties, provide a list with one element. For multi-select properties, provide multiple elements.",
+							Elem: &schema.Schema{
+								Type: schema.TypeString,
+							},
+						},
+					},
+				},
+			},
 		},
 		CustomizeDiff: customDiffFunction,
 	}
@@ -620,6 +642,14 @@ func resourceGithubRepositoryCreate(d *schema.ResourceData, meta any) error {
 		}
 	}
 
+	// Set custom properties if provided
+	if customProps, ok := d.GetOk("custom_property"); ok {
+		err := setRepositoryCustomProperties(ctx, client, owner, repoName, customProps.(*schema.Set))
+		if err != nil {
+			return err
+		}
+	}
+
 	return resourceGithubRepositoryUpdate(d, meta)
 }
 
@@ -732,6 +762,15 @@ func resourceGithubRepositoryRead(d *schema.ResourceData, meta any) error {
 	}
 
 	if err = d.Set("security_and_analysis", flattenSecurityAndAnalysis(repo.GetSecurityAndAnalysis())); err != nil {
+		return err
+	}
+
+	// Read custom properties
+	customProps, err := getRepositoryCustomProperties(ctx, client, owner, repoName)
+	if err != nil {
+		return fmt.Errorf("error reading repository custom properties: %v", err)
+	}
+	if err = d.Set("custom_property", customProps); err != nil {
 		return err
 	}
 
@@ -855,6 +894,15 @@ func resourceGithubRepositoryUpdate(d *schema.ResourceData, meta any) error {
 		}
 	} else {
 		log.Printf("[DEBUG] No privacy update required. private: %v", d.Get("private"))
+	}
+
+	// Update custom properties if changed
+	if d.HasChange("custom_property") {
+		customProps := d.Get("custom_property").(*schema.Set)
+		err := setRepositoryCustomProperties(ctx, client, owner, repoName, customProps)
+		if err != nil {
+			return err
+		}
 	}
 
 	return resourceGithubRepositoryRead(d, meta)
@@ -1062,4 +1110,113 @@ func customDiffFunction(_ context.Context, diff *schema.ResourceDiff, v any) err
 		}
 	}
 	return nil
+}
+
+// getRepositoryCustomProperties retrieves all custom properties for a repository
+// and returns them as a set suitable for Terraform state
+func getRepositoryCustomProperties(ctx context.Context, client *github.Client, owner, repoName string) (*schema.Set, error) {
+	allCustomProperties, _, err := client.Repositories.GetAllCustomPropertyValues(ctx, owner, repoName)
+	if err != nil {
+		// If we get a 404, the repository may not have custom properties support
+		if ghErr, ok := err.(*github.ErrorResponse); ok && ghErr.Response.StatusCode == http.StatusNotFound {
+			return schema.NewSet(schema.HashResource(&schema.Resource{
+				Schema: map[string]*schema.Schema{
+					"property_name": {Type: schema.TypeString},
+					"value":         {Type: schema.TypeList, Elem: &schema.Schema{Type: schema.TypeString}},
+				},
+			}), []interface{}{}), nil
+		}
+		return nil, err
+	}
+
+	if len(allCustomProperties) == 0 {
+		return schema.NewSet(schema.HashResource(&schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"property_name": {Type: schema.TypeString},
+				"value":         {Type: schema.TypeList, Elem: &schema.Schema{Type: schema.TypeString}},
+			},
+		}), []interface{}{}), nil
+	}
+
+	results := make([]interface{}, 0, len(allCustomProperties))
+	for _, prop := range allCustomProperties {
+		propMap := make(map[string]interface{})
+		propMap["property_name"] = prop.PropertyName
+
+		values, err := convertCustomPropertyValueToList(prop)
+		if err != nil {
+			return nil, fmt.Errorf("error converting custom property %s: %v", prop.PropertyName, err)
+		}
+		propMap["value"] = values
+
+		results = append(results, propMap)
+	}
+
+	return schema.NewSet(schema.HashResource(&schema.Resource{
+		Schema: map[string]*schema.Schema{
+			"property_name": {Type: schema.TypeString},
+			"value":         {Type: schema.TypeList, Elem: &schema.Schema{Type: schema.TypeString}},
+		},
+	}), results), nil
+}
+
+// setRepositoryCustomProperties sets custom properties for a repository
+func setRepositoryCustomProperties(ctx context.Context, client *github.Client, owner, repoName string, customPropsSet *schema.Set) error {
+	if customPropsSet == nil || customPropsSet.Len() == 0 {
+		return nil
+	}
+
+	customPropsList := customPropsSet.List()
+	propertyValues := make([]*github.CustomPropertyValue, 0, len(customPropsList))
+
+	for _, item := range customPropsList {
+		propMap := item.(map[string]interface{})
+		propName := propMap["property_name"].(string)
+		valuesList := propMap["value"].([]interface{})
+
+		customProp := &github.CustomPropertyValue{
+			PropertyName: propName,
+		}
+
+		// Convert values list to appropriate format
+		if len(valuesList) == 1 {
+			// Single value - set as string
+			customProp.Value = valuesList[0].(string)
+		} else {
+			// Multiple values - set as array
+			values := make([]string, len(valuesList))
+			for i, v := range valuesList {
+				values[i] = v.(string)
+			}
+			customProp.Value = values
+		}
+
+		propertyValues = append(propertyValues, customProp)
+	}
+
+	_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, propertyValues)
+	return err
+}
+
+// convertCustomPropertyValueToList converts a GitHub CustomPropertyValue to a list
+// for storing in Terraform state
+func convertCustomPropertyValueToList(prop *github.CustomPropertyValue) ([]interface{}, error) {
+	if prop.Value == nil {
+		return []interface{}{}, nil
+	}
+
+	switch v := prop.Value.(type) {
+	case string:
+		return []interface{}{v}, nil
+	case []interface{}:
+		return v, nil
+	case []string:
+		result := make([]interface{}, len(v))
+		for i, s := range v {
+			result[i] = s
+		}
+		return result, nil
+	default:
+		return []interface{}{fmt.Sprintf("%v", v)}, nil
+	}
 }
