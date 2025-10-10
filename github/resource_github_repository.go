@@ -1124,7 +1124,7 @@ func getRepositoryCustomProperties(ctx context.Context, client *github.Client, o
 					"property_name": {Type: schema.TypeString},
 					"value":         {Type: schema.TypeList, Elem: &schema.Schema{Type: schema.TypeString}},
 				},
-			}), []interface{}{}), nil
+			}), []any{}), nil
 		}
 		return nil, err
 	}
@@ -1135,12 +1135,12 @@ func getRepositoryCustomProperties(ctx context.Context, client *github.Client, o
 				"property_name": {Type: schema.TypeString},
 				"value":         {Type: schema.TypeList, Elem: &schema.Schema{Type: schema.TypeString}},
 			},
-		}), []interface{}{}), nil
+		}), []any{}), nil
 	}
 
-	results := make([]interface{}, 0, len(allCustomProperties))
+	results := make([]any, 0, len(allCustomProperties))
 	for _, prop := range allCustomProperties {
-		propMap := make(map[string]interface{})
+		propMap := make(map[string]any)
 		propMap["property_name"] = prop.PropertyName
 
 		values, err := convertCustomPropertyValueToList(prop)
@@ -1170,9 +1170,9 @@ func setRepositoryCustomProperties(ctx context.Context, client *github.Client, o
 	propertyValues := make([]*github.CustomPropertyValue, 0, len(customPropsList))
 
 	for _, item := range customPropsList {
-		propMap := item.(map[string]interface{})
+		propMap := item.(map[string]any)
 		propName := propMap["property_name"].(string)
-		valuesList := propMap["value"].([]interface{})
+		valuesList := propMap["value"].([]any)
 
 		customProp := &github.CustomPropertyValue{
 			PropertyName: propName,
@@ -1200,23 +1200,23 @@ func setRepositoryCustomProperties(ctx context.Context, client *github.Client, o
 
 // convertCustomPropertyValueToList converts a GitHub CustomPropertyValue to a list
 // for storing in Terraform state
-func convertCustomPropertyValueToList(prop *github.CustomPropertyValue) ([]interface{}, error) {
+func convertCustomPropertyValueToList(prop *github.CustomPropertyValue) ([]any, error) {
 	if prop.Value == nil {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 
 	switch v := prop.Value.(type) {
 	case string:
-		return []interface{}{v}, nil
-	case []interface{}:
+		return []any{v}, nil
+	case []any:
 		return v, nil
 	case []string:
-		result := make([]interface{}, len(v))
+		result := make([]any, len(v))
 		for i, s := range v {
 			result[i] = s
 		}
 		return result, nil
 	default:
-		return []interface{}{fmt.Sprintf("%v", v)}, nil
+		return []any{fmt.Sprintf("%v", v)}, nil
 	}
 }
