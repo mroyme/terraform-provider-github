@@ -1,0 +1,38 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+This resource allows you to create and manage custom properties for a GitHub organization. Custom properties can be used to add metadata to repositories within your organization.
+
+## Example Usage
+
+{{tffile "examples/resources/github_organization_custom_property/example_1.tf"}}
+
+## Additional Examples
+
+### Multi-select custom property
+
+{{tffile "examples/resources/github_organization_custom_property/example_2.tf"}}
+
+### String custom property
+
+{{tffile "examples/resources/github_organization_custom_property/example_3.tf"}}
+
+### True/False custom property
+
+{{tffile "examples/resources/github_organization_custom_property/example_4.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+GitHub Organization Custom Property can be imported using an ID made up of a combination of the organization name and custom property name separated by a `:` character, e.g.
+
+```shell
+terraform import github_organization_custom_property.example my-org:my-property
+```
