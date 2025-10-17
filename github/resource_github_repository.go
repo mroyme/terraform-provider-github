@@ -1149,7 +1149,6 @@ func customDiffFunction(_ context.Context, diff *schema.ResourceDiff, v any) err
 func getAllCustomPropertiesAsMap(ctx context.Context, client *github.Client, owner, repoName string) (map[string]string, error) {
 	allCustomProperties, _, err := client.Repositories.GetAllCustomPropertyValues(ctx, owner, repoName)
 	if err != nil {
-		// If we get a 404, the repository may not have custom properties support
 		if ghErr, ok := err.(*github.ErrorResponse); ok && ghErr.Response.StatusCode == http.StatusNotFound {
 			return map[string]string{}, nil
 		}
@@ -1180,7 +1179,6 @@ func getAllCustomPropertiesAsMap(ctx context.Context, client *github.Client, own
 func getRepositoryCustomPropertiesFiltered(ctx context.Context, client *github.Client, owner, repoName string, managedProperties *schema.Set) (*schema.Set, error) {
 	allCustomProperties, _, err := client.Repositories.GetAllCustomPropertyValues(ctx, owner, repoName)
 	if err != nil {
-		// If we get a 404, the repository may not have custom properties support
 		if ghErr, ok := err.(*github.ErrorResponse); ok && ghErr.Response.StatusCode == http.StatusNotFound {
 			return schema.NewSet(schema.HashResource(&schema.Resource{
 				Schema: map[string]*schema.Schema{
@@ -1192,7 +1190,6 @@ func getRepositoryCustomPropertiesFiltered(ctx context.Context, client *github.C
 		return nil, err
 	}
 
-	// Build a set of property names we're managing
 	managedNames := make(map[string]bool)
 	if managedProperties != nil {
 		for _, item := range managedProperties.List() {
