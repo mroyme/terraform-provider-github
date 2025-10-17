@@ -55,23 +55,23 @@ resource "github_repository" "example" {
   description = "My awesome codebase"
 
   custom_property {
-    property_name = "foo"
-    value         = ["bar"]
+    name  = "foo"
+    value = ["bar"]
   }
 
   custom_property {
-    property_name = "boolean"
-    value         = ["false"]
+    name  = "boolean"
+    value = ["false"]
   }
 
   custom_property {
-    property_name = "multiselect"
-    value         = ["goo", "zoo"]
+    name  = "multiselect"
+    value = ["goo", "zoo"]
   }
 
   custom_property {
-    property_name = "singleselect"
-    value         = ["acme"]
+    name  = "singleselect"
+    value = ["acme"]
   }
 }
 ```
@@ -97,6 +97,7 @@ resource "github_repository" "example" {
 - `default_branch` (String, Deprecated) Can only be set after initial repository creation, and only if the target branch exists
 - `delete_branch_on_merge` (Boolean) Automatically delete head branch after a pull request is merged. Defaults to 'false'.
 - `description` (String) A description of the repository.
+- `exclusive_custom_properties` (Boolean) Whether this resource exclusively manages all custom properties. If true, properties not defined in custom_property blocks will be removed. If false, only properties defined in custom_property blocks will be managed.
 - `gitignore_template` (String) Use the name of the template without the extension. For example, 'Haskell'.
 - `has_discussions` (Boolean) Set to 'true' to enable GitHub Discussions on the repository. Defaults to 'false'.
 - `has_downloads` (Boolean) Set to 'true' to enable the (deprecated) downloads features on the repository.
@@ -122,6 +123,7 @@ resource "github_repository" "example" {
 
 ### Read-Only
 
+- `all_custom_properties` (Map of String) All custom properties set on the repository, including those not managed by this resource.
 - `etag` (String)
 - `full_name` (String) A string of the form 'orgname/reponame'.
 - `git_clone_url` (String) URL that can be provided to 'git clone' to clone the repository anonymously via the git protocol.
@@ -139,7 +141,7 @@ resource "github_repository" "example" {
 
 Required:
 
-- `property_name` (String) The name of the custom property.
+- `name` (String) The name of the custom property.
 - `value` (List of String) The value(s) of the custom property. For single-value properties, provide a list with one element. For multi-select properties, provide multiple elements.
 
 

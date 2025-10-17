@@ -4,22 +4,22 @@ resource "github_repository" "example" {
   description = "My awesome codebase"
 
   custom_property {
-    property_name = "foo"
-    value         = ["bar"]
+    name  = "foo"
+    value = ["bar"]
   }
 
   custom_property {
-    property_name = "boolean"
-    value         = ["false"]
+    name  = "boolean"
+    value = ["false"]
   }
 
   custom_property {
-    property_name = "multiselect"
-    value         = ["goo", "zoo"]
+    name  = "multiselect"
+    value = ["goo", "zoo"]
   }
 
   custom_property {
-    property_name = "singleselect"
-    value         = ["acme"]
+    name  = "singleselect"
+    value = ["acme"]
   }
 }

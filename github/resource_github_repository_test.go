@@ -982,12 +982,71 @@ func TestAccGithubRepositories(t *testing.T) {
 		t.Run("with an organization account", func(t *testing.T) {
 			testCase(t, organization)
 		})
-
 	})
 
-}
-func TestAccGithubRepositoryPages(t *testing.T) {
+	t.Run("manages custom properties without error", func(t *testing.T) {
+		config := fmt.Sprintf(`
+			resource "github_repository" "test" {
+				name         = "tf-acc-test-custom-props-%[1]s"
+				description  = "Terraform acceptance tests %[1]s"
+				auto_init    = false
+				
+				exclusive_custom_properties = true
+				
+				custom_property {
+					name  = "test_string_prop"
+					value = ["test_value"]
+				}
+				
+				custom_property {
+					name  = "test_multi_prop"
+					value = ["value1", "value2"]
+				}
+			}
+		`, randomID)
 
+		check := resource.ComposeTestCheckFunc(
+			resource.TestCheckResourceAttr(
+				"github_repository.test", "exclusive_custom_properties",
+				"true",
+			),
+			resource.TestCheckResourceAttr(
+				"github_repository.test", "custom_property.#",
+				"2",
+			),
+			resource.TestCheckResourceAttrSet(
+				"github_repository.test", "all_custom_properties.%",
+			),
+		)
+
+		testCase := func(t *testing.T, mode string) {
+			resource.Test(t, resource.TestCase{
+				PreCheck:  func() { skipUnlessMode(t, mode) },
+				Providers: testAccProviders,
+				Steps: []resource.TestStep{
+					{
+						Config: config,
+						Check:  check,
+					},
+				},
+			})
+		}
+
+		t.Run("with an anonymous account", func(t *testing.T) {
+			t.Skip("anonymous account not supported for this operation")
+		})
+
+		t.Run("with an individual account", func(t *testing.T) {
+			t.Skip("individual account not supported for custom properties")
+		})
+
+		t.Run("with an organization account", func(t *testing.T) {
+			testCase(t, organization)
+		})
+	})
+}
+
+func TestAccGithubRepositoryPages(t *testing.T) {
 	randomID := acctest.RandStringFromCharSet(5, acctest.CharSetAlphaNum)
 
 	t.Run("manages the legacy pages feature for a repository", func(t *testing.T) {
