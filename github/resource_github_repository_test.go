@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1027,6 +1028,190 @@ func TestAccGithubRepositories(t *testing.T) {
 					{
 						Config: config,
 						Check:  check,
+					},
+				},
+			})
+		}
+
+		t.Run("with an anonymous account", func(t *testing.T) {
+			t.Skip("anonymous account not supported for this operation")
+		})
+
+		t.Run("with an individual account", func(t *testing.T) {
+			t.Skip("individual account not supported for custom properties")
+		})
+
+		t.Run("with an organization account", func(t *testing.T) {
+			testCase(t, organization)
+		})
+	})
+
+	t.Run("manages custom properties in non-exclusive mode without error", func(t *testing.T) {
+		randomID := acctest.RandStringFromCharSet(5, acctest.CharSetAlphaNum)
+
+		config := fmt.Sprintf(`
+			resource "github_repository" "test" {
+				name         = "tf-acc-test-custom-props-non-exclusive-%[1]s"
+				description  = "Terraform acceptance tests %[1]s"
+				auto_init    = false
+				
+				exclusive_custom_properties = false
+				
+				custom_property {
+					name  = "test_string_prop"
+					value = ["test_value"]
+				}
+				
+				custom_property {
+					name  = "test_multi_prop"
+					value = ["value1", "value2"]
+				}
+			}
+		`, randomID)
+
+		check := resource.ComposeTestCheckFunc(
+			resource.TestCheckResourceAttr(
+				"github_repository.test", "exclusive_custom_properties",
+				"false",
+			),
+			resource.TestCheckResourceAttr(
+				"github_repository.test", "custom_property.#",
+				"2",
+			),
+			resource.TestCheckResourceAttrSet(
+				"github_repository.test", "all_custom_properties.%",
+			),
+		)
+
+		testCase := func(t *testing.T, mode string) {
+			resource.Test(t, resource.TestCase{
+				PreCheck:  func() { skipUnlessMode(t, mode) },
+				Providers: testAccProviders,
+				Steps: []resource.TestStep{
+					{
+						Config: config,
+						Check:  check,
+					},
+				},
+			})
+		}
+
+		t.Run("with an anonymous account", func(t *testing.T) {
+			t.Skip("anonymous account not supported for this operation")
+		})
+
+		t.Run("with an individual account", func(t *testing.T) {
+			t.Skip("individual account not supported for custom properties")
+		})
+
+		t.Run("with an organization account", func(t *testing.T) {
+			testCase(t, organization)
+		})
+	})
+
+	t.Run("manages custom properties in non-exclusive mode with standalone custom property resource", func(t *testing.T) {
+		randomID := acctest.RandStringFromCharSet(5, acctest.CharSetAlphaNum)
+
+		// First create a repository with a standalone custom property resource
+		configStep1 := fmt.Sprintf(`
+			resource "github_repository" "test" {
+				name = "tf-acc-%s"
+				exclusive_custom_properties = false
+			}
+
+			resource "github_repository_custom_property" "standalone_prop" {
+				repository = github_repository.test.name
+				property_name = "standalone_prop"
+				value = ["standalone_value"]
+			}
+		`, randomID)
+
+		// Then add custom_property blocks to the repository - should preserve standalone property
+		configStep2 := fmt.Sprintf(`
+			resource "github_repository" "test" {
+				name = "tf-acc-%s"
+				exclusive_custom_properties = false
+				
+				custom_property {
+					name  = "repo_managed_prop"
+					value = ["repo_value"]
+				}
+				
+				custom_property {
+					name  = "repo_multi_prop" 
+					value = ["value1", "value2"]
+				}
+			}
+
+			resource "github_repository_custom_property" "standalone_prop" {
+				repository = github_repository.test.name
+				property_name = "standalone_prop"
+				value = ["standalone_value"]
+			}
+		`, randomID)
+
+		testCase := func(t *testing.T, mode string) {
+			resource.Test(t, resource.TestCase{
+				PreCheck:  func() { skipUnlessMode(t, mode) },
+				Providers: testAccProviders,
+				Steps: []resource.TestStep{
+					{
+						Config: configStep1,
+						Check: resource.ComposeTestCheckFunc(
+							resource.TestCheckResourceAttr(
+								"github_repository.test", "exclusive_custom_properties",
+								"false",
+							),
+							resource.TestCheckResourceAttr(
+								"github_repository_custom_property.standalone_prop", "property_name",
+								"standalone_prop",
+							),
+						),
+					},
+					{
+						Config: configStep2,
+						Check: resource.ComposeTestCheckFunc(
+							resource.TestCheckResourceAttr(
+								"github_repository.test", "exclusive_custom_properties",
+								"false",
+							),
+							resource.TestCheckResourceAttr(
+								"github_repository.test", "custom_property.#",
+								"2",
+							),
+							// Verify standalone property still exists
+							resource.TestCheckResourceAttr(
+								"github_repository_custom_property.standalone_prop", "property_name",
+								"standalone_prop",
+							),
+							// Verify all_custom_properties includes both standalone and repo-managed properties
+							resource.TestCheckResourceAttrSet(
+								"github_repository.test", "all_custom_properties.%",
+							),
+							// Should have at least 3 properties total (1 standalone + 2 repo-managed)
+							func(s *terraform.State) error {
+								rs, ok := s.RootModule().Resources["github_repository.test"]
+								if !ok {
+									return fmt.Errorf("Not found: github_repository.test")
+								}
+
+								allPropsAttr := rs.Primary.Attributes["all_custom_properties.%"]
+								if allPropsAttr == "" {
+									return fmt.Errorf("all_custom_properties.%% not found")
+								}
+
+								count, err := strconv.Atoi(allPropsAttr)
+								if err != nil {
+									return fmt.Errorf("Error parsing all_custom_properties count: %v", err)
+								}
+
+								if count < 3 {
+									return fmt.Errorf("Expected at least 3 custom properties (1 standalone + 2 repo-managed), got %d", count)
+								}
+
+								return nil
+							},
+						),
 					},
 				},
 			})
