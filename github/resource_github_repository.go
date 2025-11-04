@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -1162,12 +1163,16 @@ func getAllCustomPropertiesAsMap(ctx context.Context, client *github.Client, own
 			return nil, fmt.Errorf("error converting property %s: %v", prop.PropertyName, err)
 		}
 
-		// Convert the list to a string representation
+		// Convert the list to a string representation using JSON
 		if len(values) == 1 {
 			result[prop.PropertyName] = values[0]
 		} else {
-			// For multiple values, create a comma-separated list in brackets
-			result[prop.PropertyName] = fmt.Sprintf("[%s]", strings.Join(values, ","))
+			// For multiple values, use JSON encoding to properly handle special characters
+			jsonBytes, err := json.Marshal(values)
+			if err != nil {
+				return nil, fmt.Errorf("error marshaling property %s: %v", prop.PropertyName, err)
+			}
+			result[prop.PropertyName] = string(jsonBytes)
 		}
 	}
 
@@ -1272,35 +1277,18 @@ func setRepositoryCustomProperties(ctx context.Context, client *github.Client, o
 	} else {
 		// In non-exclusive mode, update only the specified properties
 		// Note: The GitHub API doesn't support partial updates, so we need to:
-		// 1. Get current properties (from provided map or API call)
+		// 1. Get current properties from the provided map (should always be available from all_custom_properties)
 		// 2. Merge with the new properties
 		// 3. Update all properties
 
-		var finalPropsMap map[string]string
-		if currentPropsMap != nil {
-			// Use provided map and update it directly
-			finalPropsMap = make(map[string]string)
-			// Copy existing properties
-			for k, v := range currentPropsMap {
-				finalPropsMap[k] = v
-			}
-		} else {
-			// Fallback to API call if map not available
-			var err error
-			currentProps, _, err := client.Repositories.GetAllCustomPropertyValues(ctx, owner, repoName)
-			if err != nil {
-				return err
-			}
-			finalPropsMap = make(map[string]string)
-			for _, prop := range currentProps {
-				valueList, _ := convertCustomPropertyValueToList(prop)
-				// Convert to string format like in getAllCustomPropertiesAsMap
-				if len(valueList) == 1 {
-					finalPropsMap[prop.PropertyName] = valueList[0]
-				} else {
-					finalPropsMap[prop.PropertyName] = fmt.Sprintf("[%s]", strings.Join(valueList, ","))
-				}
-			}
+		if currentPropsMap == nil {
+			return fmt.Errorf("currentPropsMap is required for non-exclusive mode")
+		}
+
+		// Copy existing properties
+		finalPropsMap := make(map[string]string)
+		for k, v := range currentPropsMap {
+			finalPropsMap[k] = v
 		}
 
 		// Update the map with new properties
@@ -1310,7 +1298,12 @@ func setRepositoryCustomProperties(ctx context.Context, client *github.Client, o
 			if len(valueList) == 1 {
 				finalPropsMap[newProp.PropertyName] = valueList[0]
 			} else {
-				finalPropsMap[newProp.PropertyName] = fmt.Sprintf("[%s]", strings.Join(valueList, ","))
+				// Use JSON encoding for multiple values
+				jsonBytes, err := json.Marshal(valueList)
+				if err != nil {
+					return fmt.Errorf("error marshaling property %s: %v", newProp.PropertyName, err)
+				}
+				finalPropsMap[newProp.PropertyName] = string(jsonBytes)
 			}
 		}
 
@@ -1355,12 +1348,12 @@ func convertMapToCustomPropertyValues(allCustomPropsMap map[string]string) []*gi
 
 		// Parse the string representation back to appropriate type
 		if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") {
-			// Multi-value property: "[value1,value2]" -> []string{"value1", "value2"}
-			inner := strings.TrimPrefix(strings.TrimSuffix(valueStr, "]"), "[")
-			if inner == "" {
-				prop.Value = []string{}
+			// Multi-value property: try to parse as JSON array
+			var values []string
+			if err := json.Unmarshal([]byte(valueStr), &values); err != nil {
+				// If JSON parsing fails, treat as single value (backwards compatibility)
+				prop.Value = valueStr
 			} else {
-				values := strings.Split(inner, ",")
 				prop.Value = values
 			}
 		} else {
