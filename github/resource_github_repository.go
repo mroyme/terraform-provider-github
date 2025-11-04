@@ -790,12 +790,9 @@ func resourceGithubRepositoryRead(d *schema.ResourceData, meta any) error {
 		return err
 	}
 
-	// Then, get filtered custom properties for the ones we're explicitly managing
+	// Then, filter custom properties for the ones we're explicitly managing
 	managedCustomProps := d.Get("custom_property").(*schema.Set)
-	customProps, err := getRepositoryCustomPropertiesFiltered(ctx, client, owner, repoName, managedCustomProps)
-	if err != nil {
-		return fmt.Errorf("error reading repository custom properties: %v", err)
-	}
+	customProps := filterCustomPropertiesFromMap(allCustomProps, managedCustomProps)
 	if err = d.Set("custom_property", customProps); err != nil {
 		return err
 	}
@@ -1179,22 +1176,10 @@ func getAllCustomPropertiesAsMap(ctx context.Context, client *github.Client, own
 	return result, nil
 }
 
-// getRepositoryCustomPropertiesFiltered retrieves custom properties for a repository
-// and filters them to only include those explicitly managed by custom_property blocks
-func getRepositoryCustomPropertiesFiltered(ctx context.Context, client *github.Client, owner, repoName string, managedProperties *schema.Set) (*schema.Set, error) {
-	allCustomProperties, _, err := client.Repositories.GetAllCustomPropertyValues(ctx, owner, repoName)
-	if err != nil {
-		if ghErr, ok := err.(*github.ErrorResponse); ok && ghErr.Response.StatusCode == http.StatusNotFound {
-			return schema.NewSet(schema.HashResource(&schema.Resource{
-				Schema: map[string]*schema.Schema{
-					"name":  {Type: schema.TypeString},
-					"value": {Type: schema.TypeList, Elem: &schema.Schema{Type: schema.TypeString}},
-				},
-			}), []any{}), nil
-		}
-		return nil, err
-	}
-
+// filterCustomPropertiesFromMap filters the all_custom_properties map
+// to only include properties explicitly managed by custom_property blocks
+func filterCustomPropertiesFromMap(allCustomPropsMap map[string]string, managedProperties *schema.Set) *schema.Set {
+	// Build a set of managed property names
 	managedNames := make(map[string]bool)
 	if managedProperties != nil {
 		for _, item := range managedProperties.List() {
@@ -1206,18 +1191,36 @@ func getRepositoryCustomPropertiesFiltered(ctx context.Context, client *github.C
 		}
 	}
 
+	// Filter properties to only include managed ones
 	results := make([]any, 0)
-	for _, prop := range allCustomProperties {
+	for propName, valueStr := range allCustomPropsMap {
 		// Only include properties that we're explicitly managing
-		if managedNames[prop.PropertyName] {
+		if managedNames[propName] {
 			propMap := make(map[string]any)
-			propMap["name"] = prop.PropertyName
+			propMap["name"] = propName
 
-			values, err := convertCustomPropertyValueToList(prop)
-			if err != nil {
-				return nil, fmt.Errorf("error converting custom property %s: %v", prop.PropertyName, err)
+			// Parse the value string back to a list
+			var values []string
+			if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") {
+				// Multi-value property stored as JSON array
+				if err := json.Unmarshal([]byte(valueStr), &values); err != nil {
+					// Fallback for backwards compatibility
+					inner := strings.TrimPrefix(strings.TrimSuffix(valueStr, "]"), "[")
+					if inner != "" {
+						values = strings.Split(inner, ",")
+					}
+				}
+			} else {
+				// Single value property
+				values = []string{valueStr}
 			}
-			propMap["value"] = values
+
+			// Convert to []any for schema.Set
+			valueList := make([]any, len(values))
+			for i, v := range values {
+				valueList[i] = v
+			}
+			propMap["value"] = valueList
 
 			results = append(results, propMap)
 		}
@@ -1228,7 +1231,7 @@ func getRepositoryCustomPropertiesFiltered(ctx context.Context, client *github.C
 			"name":  {Type: schema.TypeString},
 			"value": {Type: schema.TypeList, Elem: &schema.Schema{Type: schema.TypeString}},
 		},
-	}), results), nil
+	}), results)
 }
 
 func setRepositoryCustomProperties(ctx context.Context, client *github.Client, owner, repoName string, customPropsSet *schema.Set, exclusiveMode bool, currentPropsMap map[string]string) error {
