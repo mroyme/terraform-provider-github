@@ -987,20 +987,34 @@ func TestAccGithubRepositories(t *testing.T) {
 
 	t.Run("manages custom properties without error", func(t *testing.T) {
 		config := fmt.Sprintf(`
+			resource "github_organization_custom_property" "test_string_prop" {
+				name       = "test_string_prop_%[1]s"
+				value_type = "string"
+				required   = false
+			}
+
+			resource "github_organization_custom_property" "test_multi_prop" {
+				name       = "test_multi_prop_%[1]s"
+				value_type = "multi_select"
+				required   = false
+				allowed_values = ["value1", "value2", "value3"]
+			}
+
 			resource "github_repository" "test" {
 				name         = "tf-acc-test-custom-props-%[1]s"
 				description  = "Terraform acceptance tests %[1]s"
 				auto_init    = false
+				ignore_vulnerability_alerts_during_read = true
 				
 				exclusive_custom_properties = true
 				
 				custom_property {
-					name  = "test_string_prop"
+					name  = github_organization_custom_property.test_string_prop.name
 					value = ["test_value"]
 				}
 				
 				custom_property {
-					name  = "test_multi_prop"
+					name  = github_organization_custom_property.test_multi_prop.name
 					value = ["value1", "value2"]
 				}
 			}
@@ -1050,20 +1064,34 @@ func TestAccGithubRepositories(t *testing.T) {
 		randomID := acctest.RandStringFromCharSet(5, acctest.CharSetAlphaNum)
 
 		config := fmt.Sprintf(`
+			resource "github_organization_custom_property" "test_string_prop_ne" {
+				name       = "test_string_prop_ne_%[1]s"
+				value_type = "string"
+				required   = false
+			}
+
+			resource "github_organization_custom_property" "test_multi_prop_ne" {
+				name       = "test_multi_prop_ne_%[1]s"
+				value_type = "multi_select"
+				required   = false
+				allowed_values = ["value1", "value2", "value3"]
+			}
+
 			resource "github_repository" "test" {
 				name         = "tf-acc-test-custom-props-non-exclusive-%[1]s"
 				description  = "Terraform acceptance tests %[1]s"
 				auto_init    = false
+				ignore_vulnerability_alerts_during_read = true
 				
 				exclusive_custom_properties = false
 				
 				custom_property {
-					name  = "test_string_prop"
+					name  = github_organization_custom_property.test_string_prop_ne.name
 					value = ["test_value"]
 				}
 				
 				custom_property {
-					name  = "test_multi_prop"
+					name  = github_organization_custom_property.test_multi_prop_ne.name
 					value = ["value1", "value2"]
 				}
 			}
@@ -1112,43 +1140,73 @@ func TestAccGithubRepositories(t *testing.T) {
 	t.Run("manages custom properties in non-exclusive mode with standalone custom property resource", func(t *testing.T) {
 		randomID := acctest.RandStringFromCharSet(5, acctest.CharSetAlphaNum)
 
+		// First create organization custom properties
+		orgPropsConfig := fmt.Sprintf(`
+			resource "github_organization_custom_property" "standalone_prop" {
+				name       = "standalone_prop_%[1]s"
+				value_type = "string"
+				required   = false
+			}
+
+			resource "github_organization_custom_property" "repo_managed_prop" {
+				name       = "repo_managed_prop_%[1]s"
+				value_type = "string"
+				required   = false
+			}
+
+			resource "github_organization_custom_property" "repo_multi_prop" {
+				name       = "repo_multi_prop_%[1]s"
+				value_type = "multi_select"
+				required   = false
+				allowed_values = ["value1", "value2", "value3"]
+			}
+		`, randomID)
+
 		// First create a repository with a standalone custom property resource
 		configStep1 := fmt.Sprintf(`
+			%[2]s
+
 			resource "github_repository" "test" {
-				name = "tf-acc-%s"
+				name = "tf-acc-%[1]s"
 				exclusive_custom_properties = false
+				ignore_vulnerability_alerts_during_read = true
 			}
 
 			resource "github_repository_custom_property" "standalone_prop" {
 				repository = github_repository.test.name
-				property_name = "standalone_prop"
-				value = ["standalone_value"]
+				property_type = "string"
+				property_name = github_organization_custom_property.standalone_prop.name
+				property_value = ["standalone_value"]
 			}
-		`, randomID)
+		`, randomID, orgPropsConfig)
 
 		// Then add custom_property blocks to the repository - should preserve standalone property
 		configStep2 := fmt.Sprintf(`
+			%[2]s
+
 			resource "github_repository" "test" {
-				name = "tf-acc-%s"
+				name = "tf-acc-%[1]s"
 				exclusive_custom_properties = false
+				ignore_vulnerability_alerts_during_read = true
 				
 				custom_property {
-					name  = "repo_managed_prop"
+					name  = github_organization_custom_property.repo_managed_prop.name
 					value = ["repo_value"]
 				}
 				
 				custom_property {
-					name  = "repo_multi_prop" 
+					name  = github_organization_custom_property.repo_multi_prop.name
 					value = ["value1", "value2"]
 				}
 			}
 
 			resource "github_repository_custom_property" "standalone_prop" {
 				repository = github_repository.test.name
-				property_name = "standalone_prop"
-				value = ["standalone_value"]
+				property_type = "string"
+				property_name = github_organization_custom_property.standalone_prop.name
+				property_value = ["standalone_value"]
 			}
-		`, randomID)
+		`, randomID, orgPropsConfig)
 
 		testCase := func(t *testing.T, mode string) {
 			resource.Test(t, resource.TestCase{
@@ -1162,9 +1220,9 @@ func TestAccGithubRepositories(t *testing.T) {
 								"github_repository.test", "exclusive_custom_properties",
 								"false",
 							),
-							resource.TestCheckResourceAttr(
+							resource.TestCheckResourceAttrPair(
 								"github_repository_custom_property.standalone_prop", "property_name",
-								"standalone_prop",
+								"github_organization_custom_property.standalone_prop", "name",
 							),
 						),
 					},
@@ -1180,9 +1238,9 @@ func TestAccGithubRepositories(t *testing.T) {
 								"2",
 							),
 							// Verify standalone property still exists
-							resource.TestCheckResourceAttr(
+							resource.TestCheckResourceAttrPair(
 								"github_repository_custom_property.standalone_prop", "property_name",
-								"standalone_prop",
+								"github_organization_custom_property.standalone_prop", "name",
 							),
 							// Verify all_custom_properties includes both standalone and repo-managed properties
 							resource.TestCheckResourceAttrSet(
