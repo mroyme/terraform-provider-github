@@ -1218,11 +1218,8 @@ func filterCustomPropertiesFromMap(allCustomPropsMap map[string]any, managedProp
 				if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") {
 					// Multi-value property stored as JSON array
 					if err := json.Unmarshal([]byte(valueStr), &values); err != nil {
-						// Fallback for backwards compatibility
-						inner := strings.TrimPrefix(strings.TrimSuffix(valueStr, "]"), "[")
-						if inner != "" {
-							values = strings.Split(inner, ",")
-						}
+						log.Printf("[WARN] Failed to unmarshal custom property value for %s: %v", propName, err)
+						continue
 					}
 				} else {
 					// Single value property
