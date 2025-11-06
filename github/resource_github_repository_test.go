@@ -1886,7 +1886,7 @@ func TestAccGithubRepositoryVisibility(t *testing.T) {
 				}
 				custom_property {
 					name  = "multi_select_prop"
-					value = jsonencode(["option1", "option2"])
+					value = ["option1", "option2"]
 				}
 			}
 		`, randomID)
