@@ -1873,19 +1873,34 @@ func TestAccGithubRepositoryVisibility(t *testing.T) {
 				name        = "tf-acc-test-%s"
 				description = "Test repository for custom properties"
 				
-				custom_properties = {
-					string_prop = "test_value"
-					boolean_prop = "true"
-					single_select_prop = "option1"
-					multi_select_prop = jsonencode(["option1", "option2"])
+				custom_property {
+					name  = "string_prop"
+					value = "test_value"
+				}
+				custom_property {
+					name  = "boolean_prop"
+					value = "true"
+				}
+				custom_property {
+					name  = "single_select_prop"
+					value = "option1"
+				}
+				custom_property {
+					name  = "multi_select_prop"
+					value = jsonencode(["option1", "option2"])
 				}
 			}
 		`, randomID)
 
 		check := resource.ComposeTestCheckFunc(
-			resource.TestCheckResourceAttr("github_repository.test", "custom_properties.string_prop", "test_value"),
-			resource.TestCheckResourceAttr("github_repository.test", "custom_properties.boolean_prop", "true"),
-			resource.TestCheckResourceAttr("github_repository.test", "custom_properties.single_select_prop", "option1"),
+			resource.TestCheckResourceAttr("github_repository.test", "custom_property.0.name", "string_prop"),
+			resource.TestCheckResourceAttr("github_repository.test", "custom_property.0.value", "test_value"),
+			resource.TestCheckResourceAttr("github_repository.test", "custom_property.1.name", "boolean_prop"),
+			resource.TestCheckResourceAttr("github_repository.test", "custom_property.1.value", "true"),
+			resource.TestCheckResourceAttr("github_repository.test", "custom_property.2.name", "single_select_prop"),
+			resource.TestCheckResourceAttr("github_repository.test", "custom_property.2.value", "option1"),
+			resource.TestCheckResourceAttr("github_repository.test", "custom_property.3.name", "multi_select_prop"),
+			resource.TestCheckResourceAttr("github_repository.test", "custom_property.3.value", `["option1","option2"]`),
 		)
 
 		testCase := func(t *testing.T, mode string) {
