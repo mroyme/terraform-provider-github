@@ -1061,8 +1061,6 @@ func TestAccGithubRepositories(t *testing.T) {
 	})
 
 	t.Run("manages custom properties in non-exclusive mode without error", func(t *testing.T) {
-		randomID := acctest.RandStringFromCharSet(5, acctest.CharSetAlphaNum)
-
 		config := fmt.Sprintf(`
 			resource "github_organization_custom_property" "test_string_prop_ne" {
 				name       = "test_string_prop_ne_%[1]s"
