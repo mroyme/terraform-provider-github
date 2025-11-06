@@ -1311,15 +1311,9 @@ func setRepositoryCustomProperties(ctx context.Context, client *github.Client, o
 				})
 			}
 		}
-
-		_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, propertyValues)
-		return err
-	} else {
-		// In non-exclusive mode, just update the specified properties
-		// PATCH semantics mean other properties are left untouched
-		_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, propertyValues)
-		return err
 	}
+	_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, propertyValues)
+	return err
 }
 
 // convertCustomPropertyValueToList converts a GitHub CustomPropertyValue to a string slice
