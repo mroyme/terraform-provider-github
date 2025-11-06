@@ -1874,15 +1874,15 @@ func TestAccGithubRepositoryVisibility(t *testing.T) {
 				
 				custom_property {
 					name  = "string_prop"
-					value = "test_value"
+					value = ["test_value"]
 				}
 				custom_property {
 					name  = "boolean_prop"
-					value = "true"
+					value = ["true"]
 				}
 				custom_property {
 					name  = "single_select_prop"
-					value = "option1"
+					value = ["option1"]
 				}
 				custom_property {
 					name  = "multi_select_prop"
