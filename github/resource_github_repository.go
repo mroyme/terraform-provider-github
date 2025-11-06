@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"maps"
 	"net/http"
 	"regexp"
 	"strings"
@@ -932,9 +931,20 @@ func resourceGithubRepositoryUpdate(d *schema.ResourceData, meta any) error {
 			}
 		}
 
-		err := setRepositoryCustomProperties(ctx, client, owner, repoName, customProps, exclusiveMode, currentPropsMap)
-		if err != nil {
-			return err
+		// Check if the custom_property block has been completely removed
+		if customProps.Len() == 0 && d.HasChange("custom_property") {
+			// Custom property block removed - clear all properties
+			log.Printf("[DEBUG] Custom property block removed, clearing all properties for repository: %s/%s", owner, repoName)
+			_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, []*github.CustomPropertyValue{})
+			if err != nil {
+				return err
+			}
+		} else {
+			// Normal update flow
+			err := setRepositoryCustomProperties(ctx, client, owner, repoName, customProps, exclusiveMode, currentPropsMap)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1242,21 +1252,33 @@ func filterCustomPropertiesFromMap(allCustomPropsMap map[string]any, managedProp
 func setRepositoryCustomProperties(ctx context.Context, client *github.Client, owner, repoName string, customPropsSet *schema.Set, exclusiveMode bool, currentPropsMap map[string]any) error {
 	if customPropsSet == nil || customPropsSet.Len() == 0 {
 		if exclusiveMode {
-			// In exclusive mode, if no properties are defined, clear all properties
-			_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, []*github.CustomPropertyValue{})
-			return err
+			// In exclusive mode, if no properties are defined, send all current properties with null values to remove them
+			if len(currentPropsMap) > 0 {
+				propertyValues := make([]*github.CustomPropertyValue, 0, len(currentPropsMap))
+				for propName := range currentPropsMap {
+					propertyValues = append(propertyValues, &github.CustomPropertyValue{
+						PropertyName: propName,
+						Value:        nil, // null value to remove
+					})
+				}
+				_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, propertyValues)
+				return err
+			}
 		}
 		// In non-exclusive mode, do nothing if no properties are defined
 		return nil
 	}
 
 	customPropsList := customPropsSet.List()
-	propertyValues := make([]*github.CustomPropertyValue, 0, len(customPropsList))
+	propertyValues := make([]*github.CustomPropertyValue, 0)
+	newPropNames := make(map[string]bool)
 
 	for _, item := range customPropsList {
 		propMap := item.(map[string]any)
 		propName := propMap["name"].(string)
 		valuesList := propMap["value"].([]any)
+
+		newPropNames[propName] = true
 
 		customProp := &github.CustomPropertyValue{
 			PropertyName: propName,
@@ -1279,48 +1301,23 @@ func setRepositoryCustomProperties(ctx context.Context, client *github.Client, o
 	}
 
 	if exclusiveMode {
-		// In exclusive mode, replace all properties with the defined ones
+		// In exclusive mode, we need to explicitly remove properties that are no longer in the config
+		// by sending them with null values
+		for propName := range currentPropsMap {
+			if !newPropNames[propName] {
+				propertyValues = append(propertyValues, &github.CustomPropertyValue{
+					PropertyName: propName,
+					Value:        nil, // null value to remove
+				})
+			}
+		}
+
 		_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, propertyValues)
 		return err
 	} else {
-		// In non-exclusive mode, update only the specified properties
-		// Note: The GitHub API doesn't support partial updates, so we need to:
-		// 1. Get current properties (from provided map or fetch from API if not available)
-		// 2. Merge with the new properties
-		// 3. Update all properties
-
-		// If currentPropsMap is nil, fetch from API (e.g., during initial create)
-		if currentPropsMap == nil {
-			var err error
-			currentPropsMap, err = getAllCustomPropertiesAsMap(ctx, client, owner, repoName)
-			if err != nil {
-				return fmt.Errorf("error fetching current custom properties: %v", err)
-			}
-		}
-
-		// Copy existing properties
-		finalPropsMap := make(map[string]any)
-		maps.Copy(finalPropsMap, currentPropsMap)
-
-		// Update the map with new properties
-		for _, newProp := range propertyValues {
-			// Convert to string format for the map
-			valueList, _ := convertCustomPropertyValueToList(newProp)
-			if len(valueList) == 1 {
-				finalPropsMap[newProp.PropertyName] = valueList[0]
-			} else {
-				// Use JSON encoding for multiple values
-				jsonBytes, err := json.Marshal(valueList)
-				if err != nil {
-					return fmt.Errorf("error marshaling property %s: %v", newProp.PropertyName, err)
-				}
-				finalPropsMap[newProp.PropertyName] = string(jsonBytes)
-			}
-		}
-
-		// Convert final map to API format
-		allProperties := convertMapToCustomPropertyValues(finalPropsMap)
-		_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, allProperties)
+		// In non-exclusive mode, just update the specified properties
+		// PATCH semantics mean other properties are left untouched
+		_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, propertyValues)
 		return err
 	}
 }
@@ -1346,40 +1343,4 @@ func convertCustomPropertyValueToList(prop *github.CustomPropertyValue) ([]strin
 	default:
 		return []string{fmt.Sprintf("%v", v)}, nil
 	}
-}
-
-// convertMapToCustomPropertyValues converts the all_custom_properties map back to API format
-func convertMapToCustomPropertyValues(allCustomPropsMap map[string]any) []*github.CustomPropertyValue {
-	result := make([]*github.CustomPropertyValue, 0, len(allCustomPropsMap))
-
-	for propName, valueStr := range allCustomPropsMap {
-		strValue, ok := valueStr.(string)
-		if !ok {
-			log.Printf("[WARN] Skipping custom property %q: value is not a string", propName)
-			continue
-		}
-
-		prop := &github.CustomPropertyValue{
-			PropertyName: propName,
-		}
-
-		// Parse the string representation back to appropriate type
-		if strings.HasPrefix(strValue, "[") && strings.HasSuffix(strValue, "]") {
-			// Multi-value property: try to parse as JSON array
-			var values []string
-			if err := json.Unmarshal([]byte(strValue), &values); err != nil {
-				// If JSON parsing fails, treat as single value (backwards compatibility)
-				prop.Value = strValue
-			} else {
-				prop.Value = values
-			}
-		} else {
-			// Single value property
-			prop.Value = strValue
-		}
-
-		result = append(result, prop)
-	}
-
-	return result
 }
