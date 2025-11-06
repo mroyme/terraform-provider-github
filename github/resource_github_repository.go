@@ -2,9 +2,11 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"regexp"
 	"strings"
@@ -407,6 +409,42 @@ func resourceGithubRepository() *schema.Resource {
 				Optional:    true,
 				Description: " Set to 'true' to always suggest updating pull request branches.",
 			},
+			"custom_property": {
+				Type:        schema.TypeSet,
+				Optional:    true,
+				Description: "Custom properties for the repository.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"name": {
+							Type:        schema.TypeString,
+							Required:    true,
+							Description: "The name of the custom property.",
+						},
+						"value": {
+							Type:        schema.TypeList,
+							Required:    true,
+							Description: "The value(s) of the custom property. For single-value properties, provide a list with one element. For multi-select properties, provide multiple elements.",
+							Elem: &schema.Schema{
+								Type: schema.TypeString,
+							},
+						},
+					},
+				},
+			},
+			"exclusive_custom_properties": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     true,
+				Description: "Whether this resource exclusively manages all custom properties. If true, properties not defined in custom_property blocks will be removed. If false, only properties defined in custom_property blocks will be managed.",
+			},
+			"all_custom_properties": {
+				Type:        schema.TypeMap,
+				Computed:    true,
+				Description: "All custom properties set on the repository, including those not managed by this resource.",
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+			},
 		},
 		CustomizeDiff: customDiffFunction,
 	}
@@ -620,6 +658,15 @@ func resourceGithubRepositoryCreate(d *schema.ResourceData, meta any) error {
 		}
 	}
 
+	// Set custom properties if provided
+	if customProps, ok := d.GetOk("custom_property"); ok {
+		exclusiveMode := d.Get("exclusive_custom_properties").(bool)
+		err := setRepositoryCustomProperties(ctx, client, owner, repoName, customProps.(*schema.Set), exclusiveMode, nil)
+		if err != nil {
+			return err
+		}
+	}
+
 	return resourceGithubRepositoryUpdate(d, meta)
 }
 
@@ -732,6 +779,22 @@ func resourceGithubRepositoryRead(d *schema.ResourceData, meta any) error {
 	}
 
 	if err = d.Set("security_and_analysis", flattenSecurityAndAnalysis(repo.GetSecurityAndAnalysis())); err != nil {
+		return err
+	}
+
+	// First, get all custom properties and set them in the computed field
+	allCustomProps, err := getAllCustomPropertiesAsMap(ctx, client, owner, repoName)
+	if err != nil {
+		return fmt.Errorf("error reading all repository custom properties: %v", err)
+	}
+	if err = d.Set("all_custom_properties", allCustomProps); err != nil {
+		return err
+	}
+
+	// Then, filter custom properties for the ones we're explicitly managing
+	managedCustomProps := d.Get("custom_property").(*schema.Set)
+	customProps := filterCustomPropertiesFromMap(allCustomProps, managedCustomProps)
+	if err = d.Set("custom_property", customProps); err != nil {
 		return err
 	}
 
@@ -855,6 +918,24 @@ func resourceGithubRepositoryUpdate(d *schema.ResourceData, meta any) error {
 		}
 	} else {
 		log.Printf("[DEBUG] No privacy update required. private: %v", d.Get("private"))
+	}
+
+	if d.HasChange("custom_property") || d.HasChange("exclusive_custom_properties") {
+		customProps := d.Get("custom_property").(*schema.Set)
+		exclusiveMode := d.Get("exclusive_custom_properties").(bool)
+
+		// Get current properties to avoid redundant API call
+		var currentPropsMap map[string]any
+		if allCustomProps, ok := d.GetOk("all_custom_properties"); ok {
+			if propsMap, ok := allCustomProps.(map[string]any); ok {
+				currentPropsMap = propsMap
+			}
+		}
+
+		err := setRepositoryCustomProperties(ctx, client, owner, repoName, customProps, exclusiveMode, currentPropsMap)
+		if err != nil {
+			return err
+		}
 	}
 
 	return resourceGithubRepositoryRead(d, meta)
@@ -1062,4 +1143,243 @@ func customDiffFunction(_ context.Context, diff *schema.ResourceDiff, v any) err
 		}
 	}
 	return nil
+}
+
+// getAllCustomPropertiesAsMap retrieves all custom properties for a repository
+// and returns them as a map suitable for the all_custom_properties field
+func getAllCustomPropertiesAsMap(ctx context.Context, client *github.Client, owner, repoName string) (map[string]any, error) {
+	allCustomProperties, _, err := client.Repositories.GetAllCustomPropertyValues(ctx, owner, repoName)
+	if err != nil {
+		if ghErr, ok := err.(*github.ErrorResponse); ok && ghErr.Response.StatusCode == http.StatusNotFound {
+			return map[string]any{}, nil
+		}
+		return nil, err
+	}
+
+	result := make(map[string]any)
+	for _, prop := range allCustomProperties {
+		values, err := convertCustomPropertyValueToList(prop)
+		if err != nil {
+			return nil, fmt.Errorf("error converting property %s: %v", prop.PropertyName, err)
+		}
+
+		// Convert the list to a string representation using JSON
+		if len(values) == 1 {
+			result[prop.PropertyName] = values[0]
+		} else {
+			// For multiple values, use JSON encoding to properly handle special characters
+			jsonBytes, err := json.Marshal(values)
+			if err != nil {
+				return nil, fmt.Errorf("error marshaling property %s: %v", prop.PropertyName, err)
+			}
+			result[prop.PropertyName] = string(jsonBytes)
+		}
+	}
+
+	return result, nil
+}
+
+// filterCustomPropertiesFromMap filters the all_custom_properties map
+// to only include properties explicitly managed by custom_property blocks
+func filterCustomPropertiesFromMap(allCustomPropsMap map[string]any, managedProperties *schema.Set) *schema.Set {
+	// Build a set of managed property names
+	managedNames := make(map[string]bool)
+	if managedProperties != nil {
+		for _, item := range managedProperties.List() {
+			if propMap, ok := item.(map[string]any); ok {
+				if name, ok := propMap["name"].(string); ok {
+					managedNames[name] = true
+				}
+			}
+		}
+	}
+
+	// Filter properties to only include managed ones
+	results := make([]any, 0)
+	for propName, value := range allCustomPropsMap {
+		// Only include properties that we're explicitly managing
+		if managedNames[propName] {
+			propMap := make(map[string]any)
+			propMap["name"] = propName
+
+			// Parse the value back to a list
+			var values []string
+			if valueStr, ok := value.(string); ok {
+				if strings.HasPrefix(valueStr, "[") && strings.HasSuffix(valueStr, "]") {
+					// Multi-value property stored as JSON array
+					if err := json.Unmarshal([]byte(valueStr), &values); err != nil {
+						// Fallback for backwards compatibility
+						inner := strings.TrimPrefix(strings.TrimSuffix(valueStr, "]"), "[")
+						if inner != "" {
+							values = strings.Split(inner, ",")
+						}
+					}
+				} else {
+					// Single value property
+					values = []string{valueStr}
+				}
+			}
+
+			// Convert to []any for schema.Set
+			valueList := make([]any, len(values))
+			for i, v := range values {
+				valueList[i] = v
+			}
+			propMap["value"] = valueList
+
+			results = append(results, propMap)
+		}
+	}
+
+	return schema.NewSet(schema.HashResource(&schema.Resource{
+		Schema: map[string]*schema.Schema{
+			"name":  {Type: schema.TypeString},
+			"value": {Type: schema.TypeList, Elem: &schema.Schema{Type: schema.TypeString}},
+		},
+	}), results)
+}
+
+func setRepositoryCustomProperties(ctx context.Context, client *github.Client, owner, repoName string, customPropsSet *schema.Set, exclusiveMode bool, currentPropsMap map[string]any) error {
+	if customPropsSet == nil || customPropsSet.Len() == 0 {
+		if exclusiveMode {
+			// In exclusive mode, if no properties are defined, clear all properties
+			_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, []*github.CustomPropertyValue{})
+			return err
+		}
+		// In non-exclusive mode, do nothing if no properties are defined
+		return nil
+	}
+
+	customPropsList := customPropsSet.List()
+	propertyValues := make([]*github.CustomPropertyValue, 0, len(customPropsList))
+
+	for _, item := range customPropsList {
+		propMap := item.(map[string]any)
+		propName := propMap["name"].(string)
+		valuesList := propMap["value"].([]any)
+
+		customProp := &github.CustomPropertyValue{
+			PropertyName: propName,
+		}
+
+		// Convert values list to appropriate format
+		if len(valuesList) == 1 {
+			// Single value - set as string
+			customProp.Value = valuesList[0].(string)
+		} else {
+			// Multiple values - set as array
+			values := make([]string, len(valuesList))
+			for i, v := range valuesList {
+				values[i] = v.(string)
+			}
+			customProp.Value = values
+		}
+
+		propertyValues = append(propertyValues, customProp)
+	}
+
+	if exclusiveMode {
+		// In exclusive mode, replace all properties with the defined ones
+		_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, propertyValues)
+		return err
+	} else {
+		// In non-exclusive mode, update only the specified properties
+		// Note: The GitHub API doesn't support partial updates, so we need to:
+		// 1. Get current properties (from provided map or fetch from API if not available)
+		// 2. Merge with the new properties
+		// 3. Update all properties
+
+		// If currentPropsMap is nil, fetch from API (e.g., during initial create)
+		if currentPropsMap == nil {
+			var err error
+			currentPropsMap, err = getAllCustomPropertiesAsMap(ctx, client, owner, repoName)
+			if err != nil {
+				return fmt.Errorf("error fetching current custom properties: %v", err)
+			}
+		}
+
+		// Copy existing properties
+		finalPropsMap := make(map[string]any)
+		maps.Copy(finalPropsMap, currentPropsMap)
+
+		// Update the map with new properties
+		for _, newProp := range propertyValues {
+			// Convert to string format for the map
+			valueList, _ := convertCustomPropertyValueToList(newProp)
+			if len(valueList) == 1 {
+				finalPropsMap[newProp.PropertyName] = valueList[0]
+			} else {
+				// Use JSON encoding for multiple values
+				jsonBytes, err := json.Marshal(valueList)
+				if err != nil {
+					return fmt.Errorf("error marshaling property %s: %v", newProp.PropertyName, err)
+				}
+				finalPropsMap[newProp.PropertyName] = string(jsonBytes)
+			}
+		}
+
+		// Convert final map to API format
+		allProperties := convertMapToCustomPropertyValues(finalPropsMap)
+		_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, allProperties)
+		return err
+	}
+}
+
+// convertCustomPropertyValueToList converts a GitHub CustomPropertyValue to a string slice
+// for storing in Terraform state
+func convertCustomPropertyValueToList(prop *github.CustomPropertyValue) ([]string, error) {
+	if prop.Value == nil {
+		return []string{}, nil
+	}
+
+	switch v := prop.Value.(type) {
+	case string:
+		return []string{v}, nil
+	case []any:
+		result := make([]string, len(v))
+		for i, item := range v {
+			result[i] = fmt.Sprintf("%v", item)
+		}
+		return result, nil
+	case []string:
+		return v, nil
+	default:
+		return []string{fmt.Sprintf("%v", v)}, nil
+	}
+}
+
+// convertMapToCustomPropertyValues converts the all_custom_properties map back to API format
+func convertMapToCustomPropertyValues(allCustomPropsMap map[string]any) []*github.CustomPropertyValue {
+	result := make([]*github.CustomPropertyValue, 0, len(allCustomPropsMap))
+
+	for propName, valueStr := range allCustomPropsMap {
+		strValue, ok := valueStr.(string)
+		if !ok {
+			log.Printf("[WARN] Skipping custom property %q: value is not a string", propName)
+			continue
+		}
+
+		prop := &github.CustomPropertyValue{
+			PropertyName: propName,
+		}
+
+		// Parse the string representation back to appropriate type
+		if strings.HasPrefix(strValue, "[") && strings.HasSuffix(strValue, "]") {
+			// Multi-value property: try to parse as JSON array
+			var values []string
+			if err := json.Unmarshal([]byte(strValue), &values); err != nil {
+				// If JSON parsing fails, treat as single value (backwards compatibility)
+				prop.Value = strValue
+			} else {
+				prop.Value = values
+			}
+		} else {
+			// Single value property
+			prop.Value = strValue
+		}
+
+		result = append(result, prop)
+	}
+
+	return result
 }
