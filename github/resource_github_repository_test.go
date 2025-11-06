@@ -1929,38 +1929,69 @@ func TestAccGithubRepositoryVisibility(t *testing.T) {
 	})
 
 	t.Run("updates custom properties", func(t *testing.T) {
-		t.Skip("Requires org with custom properties configured")
-
 		config := fmt.Sprintf(`
+			resource "github_organization_custom_property" "string_prop_update" {
+				name       = "string_prop_update_%[1]s"
+				value_type = "string"
+				required   = false
+			}
+
+			resource "github_organization_custom_property" "new_prop_update" {
+				name       = "new_prop_update_%[1]s"
+				value_type = "string"
+				required   = false
+			}
+
 			resource "github_repository" "test" {
-				name        = "tf-acc-test-%s"
+				name        = "tf-acc-test-custom-props-update-%[1]s"
 				description = "Test repository for custom properties"
+				auto_init   = false
+				ignore_vulnerability_alerts_during_read = true
 				
-				custom_properties = {
-					string_prop = "test_value"
+				custom_property {
+					name  = github_organization_custom_property.string_prop_update.name
+					value = ["test_value"]
 				}
 			}
 		`, randomID)
 
 		configUpdated := fmt.Sprintf(`
+			resource "github_organization_custom_property" "string_prop_update" {
+				name       = "string_prop_update_%[1]s"
+				value_type = "string"
+				required   = false
+			}
+
+			resource "github_organization_custom_property" "new_prop_update" {
+				name       = "new_prop_update_%[1]s"
+				value_type = "string"
+				required   = false
+			}
+
 			resource "github_repository" "test" {
-				name        = "tf-acc-test-%s"
+				name        = "tf-acc-test-custom-props-update-%[1]s"
 				description = "Test repository for custom properties"
+				auto_init   = false
+				ignore_vulnerability_alerts_during_read = true
 				
-				custom_properties = {
-					string_prop = "updated_value"
-					new_prop = "new_value"
+				custom_property {
+					name  = github_organization_custom_property.string_prop_update.name
+					value = ["updated_value"]
+				}
+
+				custom_property {
+					name  = github_organization_custom_property.new_prop_update.name
+					value = ["new_value"]
 				}
 			}
 		`, randomID)
 
 		check := resource.ComposeTestCheckFunc(
-			resource.TestCheckResourceAttr("github_repository.test", "custom_properties.string_prop", "test_value"),
+			resource.TestCheckResourceAttr("github_repository.test", "custom_property.#", "1"),
 		)
 
 		checkUpdated := resource.ComposeTestCheckFunc(
-			resource.TestCheckResourceAttr("github_repository.test", "custom_properties.string_prop", "updated_value"),
-			resource.TestCheckResourceAttr("github_repository.test", "custom_properties.new_prop", "new_value"),
+			resource.TestCheckResourceAttr("github_repository.test", "custom_property.#", "2"),
 		)
 
 		testCase := func(t *testing.T, mode string) {
