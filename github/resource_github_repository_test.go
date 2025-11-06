@@ -1136,7 +1136,6 @@ func TestAccGithubRepositories(t *testing.T) {
 	})
 
 	t.Run("manages custom properties in non-exclusive mode with standalone custom property resource", func(t *testing.T) {
-		randomID := acctest.RandStringFromCharSet(5, acctest.CharSetAlphaNum)
 
 		// First create organization custom properties
 		orgPropsConfig := fmt.Sprintf(`
