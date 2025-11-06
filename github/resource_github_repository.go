@@ -931,20 +931,9 @@ func resourceGithubRepositoryUpdate(d *schema.ResourceData, meta any) error {
 			}
 		}
 
-		// Check if the custom_property block has been completely removed
-		if customProps.Len() == 0 && d.HasChange("custom_property") {
-			// Custom property block removed - clear all properties
-			log.Printf("[DEBUG] Custom property block removed, clearing all properties for repository: %s/%s", owner, repoName)
-			_, err := client.Repositories.CreateOrUpdateCustomProperties(ctx, owner, repoName, []*github.CustomPropertyValue{})
-			if err != nil {
-				return err
-			}
-		} else {
-			// Normal update flow
-			err := setRepositoryCustomProperties(ctx, client, owner, repoName, customProps, exclusiveMode, currentPropsMap)
-			if err != nil {
-				return err
-			}
+		err := setRepositoryCustomProperties(ctx, client, owner, repoName, customProps, exclusiveMode, currentPropsMap)
+		if err != nil {
+			return err
 		}
 	}
 
