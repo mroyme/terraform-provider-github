@@ -434,7 +434,7 @@ func resourceGithubRepository() *schema.Resource {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Default:     true,
-				Description: "Whether this resource exclusively manages all custom properties. If true, properties not defined in custom_property blocks will be removed. If false, only properties defined in custom_property blocks will be managed.",
+				Description: "Whether this resource exclusively manages all custom properties. Defaults to 'true'; if set to 'false', only properties defined in custom_property blocks will be managed by this resource, allowing collaborative management of custom property settings.",
 			},
 			"all_custom_properties": {
 				Type:        schema.TypeMap,
